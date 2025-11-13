@@ -49,8 +49,8 @@ function AppContent() {
               </AdminRoute>
             }
           />
-          <Route path="events" element={<Events />} />
           <Route path="certificates" element={<Certificates />} />
+          <Route path="events" element={<Events />} />
           <Route path="analytics" element={<Analytics />} />
           <Route
             path="logs"

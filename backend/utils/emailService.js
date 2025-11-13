@@ -1,21 +1,105 @@
-// emailService.js
+const nodemailer = require("nodemailer");
+const path = require("path");
+const Participant = require("../models/Participant");
 
-const Brevo = require("@getbrevo/brevo");
-const { TransactionalEmailsApi, SendSmtpEmail } = Brevo;
-const participantModel = require("../models/Participant");
+const buildTransportOptions = () => {
+  const {
+    EMAIL_SERVICE,
+    EMAIL_HOST,
+    EMAIL_PORT,
+    EMAIL_USER,
+    EMAIL_PASS,
+    EMAIL_SECURE,
+    EMAIL_ALLOW_INVALID_TLS,
+  } = process.env;
 
-// initialize Brevo client
-const client = new TransactionalEmailsApi();
-client.authentications.apiKey.apiKey = process.env.BREVO_API_KEY;
+  const port = EMAIL_PORT ? Number(EMAIL_PORT) : undefined;
+  const secureFromEnv =
+    typeof EMAIL_SECURE === "string"
+      ? EMAIL_SECURE.toLowerCase() === "true"
+      : undefined;
 
-// Helper to replace placeholders in template (unchanged)
+  const baseOptions = {
+    auth: {
+      user: EMAIL_USER,
+      pass: EMAIL_PASS,
+    },
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+  };
+
+  if (!EMAIL_USER || !EMAIL_PASS) {
+    console.warn(
+      "[Email Service] EMAIL_USER or EMAIL_PASS env vars are missing. Email delivery will fail until they are provided."
+    );
+  }
+
+  if (
+    EMAIL_SERVICE === "gmail" ||
+    (!EMAIL_SERVICE && !EMAIL_HOST && EMAIL_USER?.includes("@gmail.com"))
+  ) {
+    const gmailPort = port || 465;
+    const gmailSecure =
+      secureFromEnv !== undefined ? secureFromEnv : gmailPort === 465;
+
+    return {
+      ...baseOptions,
+      service: "gmail",
+      port: gmailPort,
+      secure: gmailSecure,
+    };
+  }
+
+  if (!EMAIL_HOST) {
+    console.warn(
+      "[Email Service] EMAIL_HOST is not defined. Falling back to smtp.gmail.com."
+    );
+  }
+
+  const resolvedPort = port || 587;
+  const resolvedSecure =
+    secureFromEnv !== undefined ? secureFromEnv : resolvedPort === 465;
+
+  const transportOptions = {
+    ...baseOptions,
+    host: EMAIL_HOST || "smtp.gmail.com",
+    port: resolvedPort,
+    secure: resolvedSecure,
+  };
+
+  if (EMAIL_ALLOW_INVALID_TLS?.toLowerCase() === "true") {
+    transportOptions.tls = { rejectUnauthorized: false };
+  }
+
+  return transportOptions;
+};
+
+// Create reusable transporter
+const transporter = nodemailer.createTransport(buildTransportOptions());
+
+transporter
+  .verify()
+  .then(() => {
+    console.log("[Email Service] Transporter configuration verified.");
+  })
+  .catch((error) => {
+    console.error(
+      "[Email Service] Transporter verification failed. Email delivery will not work until this is resolved:",
+      error.message
+    );
+  });
+
+// Replace placeholders in template
 const replacePlaceholders = (template, participant) => {
   let content = template;
 
+  // Replace standard placeholders
   content = content.replace(/\{\{name\}\}/g, participant.name || "");
   content = content.replace(/\{\{email\}\}/g, participant.email || "");
   content = content.replace(/\{\{semester\}\}/g, participant.semester || "");
 
+  // Replace custom fields
   if (participant.customFields) {
     Object.keys(participant.customFields).forEach((key) => {
       const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
@@ -26,7 +110,7 @@ const replacePlaceholders = (template, participant) => {
   return content;
 };
 
-// Send email to single participant via Brevo
+// Send email to single participant
 exports.sendEmail = async (
   participantId,
   template,
@@ -34,46 +118,29 @@ exports.sendEmail = async (
   attachments = []
 ) => {
   try {
-    const participant = await participantModel.findById(participantId);
+    const participant = await Participant.findById(participantId);
     if (!participant) {
       throw new Error("Participant not found");
     }
 
     let subject = replacePlaceholders(template.subject, participant);
-    let bodyHtml = replacePlaceholders(template.body, participant);
+    let body = replacePlaceholders(template.body, participant);
 
+    // Replace event name if provided
     if (eventName) {
       subject = subject.replace(/\{\{event_name\}\}/g, eventName);
-      bodyHtml = bodyHtml.replace(/\{\{event_name\}\}/g, eventName);
+      body = body.replace(/\{\{event_name\}\}/g, eventName);
     }
 
-    // Build the message object for Brevo
-    const message = new SendSmtpEmail();
-    message.sender = {
-      name: "Task Automation System",
-      email: process.env.EMAIL_USER, // or a verified sender
+    const mailOptions = {
+      from: `"Task Automation System" <${process.env.EMAIL_USER}>`,
+      to: participant.email,
+      subject: subject,
+      html: body,
+      attachments: attachments,
     };
-    message.to = [
-      {
-        email: participant.email,
-        name: participant.name || undefined,
-      },
-    ];
-    message.subject = subject;
-    message.htmlContent = bodyHtml;
 
-    // If you want to send attachments, Brevo supports attachments as base64 encoded
-    if (attachments && attachments.length > 0) {
-      message.attachment = attachments.map((att) => ({
-        // Brevo expects base64 encoded content and filename
-        content: att.contentBase64, // you’ll need to read file and convert to base64
-        name: att.filename,
-        type: att.contentType, // e.g., 'application/pdf'
-      }));
-    }
-
-    // Send the email via Brevo
-    await client.sendTransacEmail(message);
+    await transporter.sendMail(mailOptions);
 
     // Update participant
     participant.emailSent = true;
@@ -82,6 +149,10 @@ exports.sendEmail = async (
 
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
+    console.error(
+      `[Email Service] Failed to send email to participant ${participantId}:`,
+      error
+    );
     return { success: false, message: error.message };
   }
 };
@@ -94,6 +165,7 @@ exports.sendBulkEmails = async (
   attachments = []
 ) => {
   const results = [];
+
   for (const participantId of participantIds) {
     const result = await exports.sendEmail(
       participantId,
@@ -103,6 +175,7 @@ exports.sendBulkEmails = async (
     );
     results.push({ participantId, ...result });
   }
+
   return results;
 };
 
@@ -113,14 +186,14 @@ exports.sendCertificateEmail = async (
   event
 ) => {
   try {
-    const participant = await participantModel.findById(participantId);
+    const participant = await Participant.findById(participantId);
     if (!participant) {
       throw new Error("Participant not found");
     }
 
     const eventName = event?.name || "Event";
     const subject = `Your Certificate for ${eventName}`;
-    const bodyHtml = `
+    const body = `
       <html>
         <body>
           <h2>Congratulations ${participant.name}!</h2>
@@ -132,42 +205,36 @@ exports.sendCertificateEmail = async (
       </html>
     `;
 
-    const message = new SendSmtpEmail();
-    message.sender = {
-      name: "Task Automation System",
-      email: process.env.EMAIL_USER,
+    const absoluteCertificatePath = path.isAbsolute(certificatePath)
+      ? certificatePath
+      : path.join(process.cwd(), certificatePath);
+
+    const mailOptions = {
+      from: `"Task Automation System" <${process.env.EMAIL_USER}>`,
+      to: participant.email,
+      subject: subject,
+      html: body,
+      attachments: [
+        {
+          filename: `Certificate_${participant.name.replace(/\s+/g, "_")}.pdf`,
+          path: absoluteCertificatePath,
+        },
+      ],
     };
-    message.to = [
-      {
-        email: participant.email,
-        name: participant.name || undefined,
-      },
-    ];
-    message.subject = subject;
-    message.htmlContent = bodyHtml;
 
-    // Read certificate file and encode base64
-    const fs = require("fs");
-    const path = require("path");
-    const fileContent = fs.readFileSync(path.resolve(certificatePath));
-    const base64Content = fileContent.toString("base64");
+    await transporter.sendMail(mailOptions);
 
-    message.attachment = [
-      {
-        content: base64Content,
-        name: `Certificate_${participant.name.replace(/\s+/g, "_")}.pdf`,
-        type: "application/pdf",
-      },
-    ];
-
-    await client.sendTransacEmail(message);
-
+    // Update participant
     participant.certificateSent = true;
     participant.certificateSentAt = new Date();
     await participant.save();
 
     return { success: true, message: "Certificate email sent successfully" };
   } catch (error) {
+    console.error(
+      `[Email Service] Failed to send certificate email to participant ${participantId}:`,
+      error
+    );
     return { success: false, message: error.message };
   }
 };
@@ -178,11 +245,14 @@ exports.sendEventNotificationToAll = async (event, participantIds = null) => {
     const participantQuery = {
       email: { $exists: true, $ne: "" },
     };
+
     if (Array.isArray(participantIds) && participantIds.length > 0) {
       participantQuery._id = { $in: participantIds };
     }
 
-    const participants = await participantModel.find(participantQuery);
+    // Get participants
+    const participants = await Participant.find(participantQuery);
+
     if (participants.length === 0) {
       return {
         success: true,
@@ -191,6 +261,7 @@ exports.sendEventNotificationToAll = async (event, participantIds = null) => {
       };
     }
 
+    // Format event date
     const eventDate = new Date(event.date);
     const formattedDate = eventDate.toLocaleDateString("en-US", {
       weekday: "long",
@@ -210,10 +281,11 @@ exports.sendEventNotificationToAll = async (event, participantIds = null) => {
     let failCount = 0;
     const errors = [];
 
+    // Send emails to all participants
     for (const participant of participants) {
       try {
         const subject = `Upcoming Event: ${eventName}`;
-        const bodyHtml = `
+        const body = `
           <html>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
               <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -237,21 +309,14 @@ exports.sendEventNotificationToAll = async (event, participantIds = null) => {
           </html>
         `;
 
-        const message = new SendSmtpEmail();
-        message.sender = {
-          name: "Task Automation System",
-          email: process.env.EMAIL_USER,
+        const mailOptions = {
+          from: `"Task Automation System" <${process.env.EMAIL_USER}>`,
+          to: participant.email,
+          subject: subject,
+          html: body,
         };
-        message.to = [
-          {
-            email: participant.email,
-            name: participant.name || undefined,
-          },
-        ];
-        message.subject = subject;
-        message.htmlContent = bodyHtml;
 
-        await client.sendTransacEmail(message);
+        await transporter.sendMail(mailOptions);
         successCount++;
       } catch (error) {
         failCount++;
@@ -268,23 +333,22 @@ exports.sendEventNotificationToAll = async (event, participantIds = null) => {
       message: `Event notification sent to ${successCount} participants`,
       sent: successCount,
       failed: failCount,
-      errors: errors.length ? errors : undefined,
+      errors: errors.length > 0 ? errors : undefined,
     };
   } catch (error) {
+    console.error(
+      "[Email Service] Failed to send event notification emails:",
+      error
+    );
     return { success: false, message: error.message };
   }
 };
 
-// Verify configuration (simple check)
+// Verify email configuration
 exports.verifyEmailConfig = async () => {
   try {
-    // For Brevo, you could try a lightweight send or check account; the SDK has no direct verify method
-    // One simple approach: send a test email to your own address or to a dummy address
-    // Here we'll just check that API key is present
-    if (!process.env.BREVO_API_KEY) {
-      throw new Error("BREVO_API_KEY not configured");
-    }
-    return { success: true, message: "Email configuration appears valid" };
+    await transporter.verify();
+    return { success: true, message: "Email configuration is valid" };
   } catch (error) {
     return { success: false, message: error.message };
   }

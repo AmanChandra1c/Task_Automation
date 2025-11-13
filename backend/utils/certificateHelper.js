@@ -4,8 +4,28 @@ const Participant = require("../models/Participant");
 const certificateGenerator = require("./certificateGenerator");
 const emailService = require("./emailService");
 
+// Helper function to compare dates (ignoring time)
+const compareDates = (date1, date2) => {
+  const d1 = new Date(
+    date1.getFullYear(),
+    date1.getMonth(),
+    date1.getDate()
+  );
+  const d2 = new Date(
+    date2.getFullYear(),
+    date2.getMonth(),
+    date2.getDate()
+  );
+  return {
+    date1: d1,
+    date2: d2,
+    isEqual: d1.getTime() === d2.getTime(),
+    isAfter: d1.getTime() > d2.getTime(),
+  };
+};
+
 /**
- * Generate and send certificates for new participants if event date has passed
+ * Generate certificates for new participants if event date has passed
  * @param {String} eventId - Event ID
  * @param {Array} participantIds - Array of participant IDs (optional, if not provided, will fetch all participants for the event)
  */
@@ -23,72 +43,54 @@ exports.generateCertificatesForNewParticipants = async (
     // Check if event date is today or has passed (check date only, not time)
     const eventDate = new Date(event.date);
     const today = new Date();
+    const dateComparison = compareDates(eventDate, today);
+    const isEventToday = dateComparison.isEqual;
 
-    // Set both dates to start of day for comparison
-    const eventDateOnly = new Date(
-      eventDate.getFullYear(),
-      eventDate.getMonth(),
-      eventDate.getDate()
-    );
-    const todayOnly = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
-
-    // Check if event date is today
-    const isEventToday = eventDateOnly.getTime() === todayOnly.getTime();
-
-    // 🔹 Certificate generation time set to 5:40 PM (17:40)
+    // Certificate generation time set to 10:30 PM
     const certificateTime = new Date(today);
-    certificateTime.setHours(18, 0, 0, 0); // 5:40 PM
+    certificateTime.setHours(22, 30, 0, 0); // 10:30 PM
 
     const now = new Date();
 
     // If event date is in the future, don't generate certificates yet
-    if (eventDateOnly > todayOnly) {
+    if (dateComparison.isAfter) {
       console.log(
         `[Certificate Helper] Event ${
           event.name
-        } date is in the future. Certificates will be generated at 5:40 PM on ${eventDate.toDateString()}`
+        } date is in the future. Certificates will be generated at 10:30 PM on ${eventDate.toDateString()}`
       );
       return {
         success: true,
         message:
-          "Event date is in the future. Certificates will be generated automatically at 5:40 PM on event day.",
+          "Event date is in the future. Certificates will be generated automatically at 10:30 PM on event day.",
         scheduled: true,
       };
     }
 
-    // If event is today but it's before 5:40 PM, don't generate yet
+    // If event is today but it's before 10:30 PM, don't generate yet
     if (isEventToday && now < certificateTime) {
       console.log(
-        `[Certificate Helper] Event ${event.name} is today but it's before 5:40 PM. Certificates will be generated at 5:40 PM today.`
+        `[Certificate Helper] Event ${event.name} is today but it's before 10:30 PM. Certificates will be generated at 10:30 PM today.`
       );
       return {
         success: true,
         message:
-          "Event is today but it's before 5:40 PM. Certificates will be generated automatically at 5:40 PM today.",
+          "Event is today but it's before 10:30 PM. Certificates will be generated automatically at 10:30 PM today.",
         scheduled: true,
       };
     }
 
     // Event date has passed, generate certificates for participants who haven't received them
-    let participants;
+    const query = {
+      eventId: eventId,
+      certificateSent: { $ne: true },
+    };
+    
     if (participantIds && participantIds.length > 0) {
-      // Generate for specific participants
-      participants = await Participant.find({
-        _id: { $in: participantIds },
-        eventId: eventId,
-        certificateSent: { $ne: true }, // Only those who haven't received certificates
-      });
-    } else {
-      // Generate for all participants of this event who haven't received certificates
-      participants = await Participant.find({
-        eventId: eventId,
-        certificateSent: { $ne: true },
-      });
+      query._id = { $in: participantIds };
     }
+    
+    const participants = await Participant.find(query);
 
     if (participants.length === 0) {
       console.log(
@@ -121,9 +123,30 @@ exports.generateCertificatesForNewParticipants = async (
     const templateType = certificate.templateType || "sistec";
     const results = [];
 
-    // Generate certificates for each participant (sending will happen separately at 5:45 PM)
+    // Generate certificates for each participant (sending will happen separately at 11:59 PM)
     for (const participant of participants) {
       try {
+        // Check if certificate already exists for this participant
+        const existingCert = certificate.generatedCertificates.find(
+          (cert) =>
+            cert.participantId &&
+            cert.participantId.toString() === participant._id.toString()
+        );
+
+        if (existingCert && existingCert.certificatePath) {
+          console.log(
+            `[Certificate Helper] Certificate already exists for ${participant.name}, skipping generation`
+          );
+          results.push({
+            participantId: participant._id,
+            participantName: participant.name,
+            success: true,
+            certificatePath: existingCert.certificatePath,
+            skipped: true,
+          });
+          continue;
+        }
+
         // Generate certificate only
         const certResult = await certificateGenerator.generateCertificate(
           participant._id,
@@ -183,7 +206,7 @@ exports.generateCertificatesForNewParticipants = async (
 
     return {
       success: true,
-      message: `Certificates generated for ${successfulCount} participant(s). Emails will be sent at 5:45 PM.`,
+      message: `Certificates generated for ${successfulCount} participant(s). Emails will be sent at 11:59 PM.`,
       total: results.length,
       successful: successfulCount,
       failed: results.length - successfulCount,
@@ -202,7 +225,7 @@ exports.generateCertificatesForNewParticipants = async (
 };
 
 /**
- * Send certificates that were already generated (called at 5:45 PM)
+ * Send certificates that were already generated (called at 11:59 PM)
  * @param {String} eventId - Event ID
  */
 exports.sendGeneratedCertificates = async (eventId) => {
@@ -280,10 +303,13 @@ exports.sendGeneratedCertificates = async (eventId) => {
         );
 
         if (emailResult.success) {
-          // Update certificate record
-          if (generatedCert) {
-            generatedCert.sentAt = new Date();
-          }
+          // Update certificate record sent timestamp
+          generatedCert.sentAt = new Date();
+
+          // Update participant's certificateSent flag and timestamp
+          participant.certificateSent = true;
+          participant.certificateSentAt = new Date();
+          await participant.save();
 
           results.push({
             participantId: participant._id,
