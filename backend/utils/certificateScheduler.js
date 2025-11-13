@@ -28,7 +28,7 @@ exports.scheduleCertificateGeneration = async () => {
 
     // Check if it's past 5:40 PM today
     const certificateTime = new Date();
-    certificateTime.setHours(17, 40, 0, 0); // 5:40 PM
+    certificateTime.setHours(18, 0, 0, 0); // 5:40 PM
 
     // Only process if it's past 5:40 PM
     if (now < certificateTime) {
@@ -119,7 +119,7 @@ exports.scheduleCertificateSending = async () => {
 
     // Check if it's past 5:45 PM today
     const sendTime = new Date();
-    sendTime.setHours(17, 45, 0, 0); // 5:45 PM
+    sendTime.setHours(18, 5, 0, 0); // 5:45 PM
 
     // Only process if it's past 5:45 PM
     if (now < sendTime) {
@@ -348,7 +348,7 @@ exports.scheduleEventCertificateGeneration = (event) => {
   try {
     const eventDate = new Date(event.date);
     const scheduleDate = new Date(eventDate);
-    scheduleDate.setHours(17, 40, 0, 0); // 5:40 PM
+    scheduleDate.setHours(18, 0, 0, 0); // 5:40 PM
 
     if (scheduleDate < new Date()) {
       console.log(
@@ -376,7 +376,7 @@ exports.scheduleEventCertificateGeneration = (event) => {
 
         // Schedule sending at 5:45 PM (5 minutes later)
         const sendScheduleDate = new Date(eventDate);
-        sendScheduleDate.setHours(17, 45, 0, 0); // 5:45 PM
+        sendScheduleDate.setHours(18, 5, 0, 0); // 5:45 PM
         const sendDelay = sendScheduleDate.getTime() - new Date().getTime();
 
         if (sendDelay > 0) {
@@ -483,13 +483,13 @@ exports.startDailyScheduler = () => {
     );
 
     const nextGenRun = new Date();
-    nextGenRun.setHours(17, 40, 0, 0);
+    nextGenRun.setHours(18, 0, 0, 0);
     if (nextGenRun < new Date()) {
       nextGenRun.setDate(nextGenRun.getDate() + 1);
     }
 
     const nextSendRun = new Date();
-    nextSendRun.setHours(17, 45, 0, 0);
+    nextSendRun.setHours(18, 5, 0, 0);
     if (nextSendRun < new Date()) {
       nextSendRun.setDate(nextSendRun.getDate() + 1);
     }

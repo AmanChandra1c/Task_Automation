@@ -41,7 +41,7 @@ exports.generateCertificatesForNewParticipants = async (
 
     // 🔹 Certificate generation time set to 5:40 PM (17:40)
     const certificateTime = new Date(today);
-    certificateTime.setHours(17, 40, 0, 0); // 5:40 PM
+    certificateTime.setHours(18, 0, 0, 0); // 5:40 PM
 
     const now = new Date();
 
