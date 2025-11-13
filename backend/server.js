@@ -178,7 +178,7 @@ server.listen(PORT, async () => {
   const loadScheduledEmails = require("./utils/loadScheduledEmails");
   await loadScheduledEmails(io);
 
-  // Start certificate scheduler (generation at 10:30 PM, sending at 11:59 PM daily)
+  // Start certificate scheduler (runs daily at 11:59 PM)
   try {
     certificateScheduler.startDailyScheduler();
   } catch (error) {
