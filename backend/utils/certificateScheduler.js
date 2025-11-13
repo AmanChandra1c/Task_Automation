@@ -4,6 +4,7 @@ const Certificate = require("../models/Certificate");
 const Participant = require("../models/Participant");
 const certificateGenerator = require("./certificateGenerator");
 const emailService = require("./emailService");
+const certificateHelper = require("./certificateHelper");
 const ActivityLog = require("../models/ActivityLog");
 
 let ioInstance = null;
@@ -13,26 +14,28 @@ exports.setIoInstance = (io) => {
   ioInstance = io;
 };
 
-// Schedule certificate generation and sending for events
+// Schedule certificate generation for events (called at 5:20 PM)
 exports.scheduleCertificateGeneration = async () => {
   try {
     const now = new Date();
-    console.log(`[Certificate Scheduler] Running at ${now.toISOString()}`);
+    console.log(
+      `[Certificate Scheduler] Generation job running at ${now.toISOString()}`
+    );
 
     // Get today's date (start of day)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Check if it's past 11:59 PM today
+    // Check if it's past 5:20 PM today
     const certificateTime = new Date();
-    certificateTime.setHours(23, 59, 0, 0); // 11:59 PM
+    certificateTime.setHours(17, 20, 0, 0); // 5:20 PM
 
-    // Only process if it's past 11:59 PM
+    // Only process if it's past 5:20 PM
     if (now < certificateTime) {
       console.log(
-        `[Certificate Scheduler] Current time is before 11:59 PM. Waiting until 11:59 PM.`
+        `[Certificate Scheduler] Current time is before 5:20 PM. Waiting until 5:20 PM.`
       );
-      return { success: true, message: "Waiting until 11:59 PM", count: 0 };
+      return { success: true, message: "Waiting until 5:20 PM", count: 0 };
     }
 
     // Find all events where the date matches today (ignoring time)
@@ -64,22 +67,27 @@ exports.scheduleCertificateGeneration = async () => {
     let totalProcessed = 0;
     let totalSuccessful = 0;
 
-    // Process each event
+    // Process each event - generate certificates only
     for (const event of eventsToday) {
       try {
-        const result = await exports.generateAndSendCertificatesForEvent(event);
-        totalProcessed += result.length;
-        totalSuccessful += result.filter((r) => r.success).length;
+        const result =
+          await certificateHelper.generateCertificatesForNewParticipants(
+            event._id
+          );
+        if (result.success) {
+          totalProcessed += result.total || 0;
+          totalSuccessful += result.successful || 0;
+        }
       } catch (error) {
         console.error(
-          `[Certificate Scheduler] Error processing event ${event._id}:`,
+          `[Certificate Scheduler] Error generating certificates for event ${event._id}:`,
           error
         );
       }
     }
 
     console.log(
-      `[Certificate Scheduler] Completed: ${totalSuccessful}/${totalProcessed} certificates sent successfully`
+      `[Certificate Scheduler] Completed: ${totalSuccessful}/${totalProcessed} certificates generated successfully`
     );
 
     return {
@@ -97,7 +105,97 @@ exports.scheduleCertificateGeneration = async () => {
   }
 };
 
-// Generate and send certificates for an event
+// Send certificates for an event (called at 5:25 PM)
+exports.scheduleCertificateSending = async () => {
+  try {
+    const now = new Date();
+    console.log(
+      `[Certificate Scheduler] Sending job running at ${now.toISOString()}`
+    );
+
+    // Get today's date (start of day)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check if it's past 5:25 PM today
+    const sendTime = new Date();
+    sendTime.setHours(17, 25, 0, 0); // 5:25 PM
+
+    // Only process if it's past 5:25 PM
+    if (now < sendTime) {
+      console.log(
+        `[Certificate Scheduler] Current time is before 5:25 PM. Waiting until 5:25 PM.`
+      );
+      return { success: true, message: "Waiting until 5:25 PM", count: 0 };
+    }
+
+    // Find all events where the date matches today (ignoring time)
+    const allEvents = await Event.find().populate("participants");
+    const eventsToday = allEvents.filter((event) => {
+      const eventDate = new Date(event.date);
+      const eventDateOnly = new Date(
+        eventDate.getFullYear(),
+        eventDate.getMonth(),
+        eventDate.getDate()
+      );
+      const todayOnly = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      return eventDateOnly.getTime() === todayOnly.getTime();
+    });
+
+    if (eventsToday.length === 0) {
+      console.log("[Certificate Scheduler] No events scheduled for today");
+      return { success: true, message: "No events found", count: 0 };
+    }
+
+    console.log(
+      `[Certificate Scheduler] Found ${eventsToday.length} event(s) to send certificates for today`
+    );
+
+    let totalProcessed = 0;
+    let totalSuccessful = 0;
+
+    // Process each event - send certificates only
+    for (const event of eventsToday) {
+      try {
+        const result = await certificateHelper.sendGeneratedCertificates(
+          event._id
+        );
+        if (result.success) {
+          totalProcessed += result.total || 0;
+          totalSuccessful += result.successful || 0;
+        }
+      } catch (error) {
+        console.error(
+          `[Certificate Scheduler] Error sending certificates for event ${event._id}:`,
+          error
+        );
+      }
+    }
+
+    console.log(
+      `[Certificate Scheduler] Completed: ${totalSuccessful}/${totalProcessed} certificates sent successfully`
+    );
+
+    return {
+      success: true,
+      eventsProcessed: eventsToday.length,
+      totalProcessed,
+      totalSuccessful,
+    };
+  } catch (error) {
+    console.error("[Certificate Scheduler] Fatal error in sending job:", error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+};
+
+// Generate and send certificates for an event (legacy function, kept for backward compatibility)
 exports.generateAndSendCertificatesForEvent = async (event) => {
   try {
     console.log(
@@ -245,259 +343,12 @@ exports.generateAndSendCertificatesForEvent = async (event) => {
   }
 };
 
-// Generate certificates only for an event (at 15:50 IST)
-exports.generateCertificatesForEvent = async (event) => {
-  try {
-    console.log(
-      `[Certificate Scheduler] (15:50) Generating certificates for event: ${event.name} (ID: ${event._id})`
-    );
-
-    const certificateTemplate = await Certificate.findOne({
-      eventId: event._id,
-    });
-
-    if (!certificateTemplate) {
-      console.log(
-        `[Certificate Scheduler] No certificate template found for event: ${event.name}`
-      );
-      return { total: 0, generated: 0 };
-    }
-
-    if (!Array.isArray(certificateTemplate.generatedCertificates)) {
-      certificateTemplate.generatedCertificates = [];
-    }
-
-    const alreadyGeneratedIds = new Set(
-      certificateTemplate.generatedCertificates
-        .filter((g) => g.generatedAt)
-        .map((g) => String(g.participantId))
-    );
-
-    let participants = [];
-    if (event.participants && event.participants.length > 0) {
-      const participantIds = event.participants.map((p) =>
-        typeof p === "object" ? String(p._id) : String(p)
-      );
-      participants = await Participant.find({
-        _id: { $in: participantIds },
-      });
-    } else {
-      participants = await Participant.find({
-        eventId: event._id,
-      });
-    }
-
-    const toGenerate = participants.filter(
-      (participant) => !alreadyGeneratedIds.has(String(participant._id))
-    );
-
-    if (toGenerate.length === 0) {
-      console.log(
-        `[Certificate Scheduler] No new participants to generate for event: ${event.name}`
-      );
-      return { total: 0, generated: 0 };
-    }
-
-    const certificate = await Certificate.findOne({ eventId: event._id });
-    const templateType = certificate?.templateType || "sistec";
-    const results = [];
-
-    for (const participant of toGenerate) {
-      try {
-        const certResult = await certificateGenerator.generateCertificate(
-          participant._id,
-          event,
-          templateType
-        );
-
-        if (certResult.success) {
-          const entryIndex =
-            certificateTemplate.generatedCertificates.findIndex(
-              (g) => String(g.participantId) === String(participant._id)
-            );
-
-          const payload = {
-            participantId: participant._id,
-            certificateUrl: certResult.certificateUrl,
-            certificatePath: certResult.certificatePath,
-            generatedAt: new Date(),
-          };
-
-          if (entryIndex === -1) {
-            certificateTemplate.generatedCertificates.push(payload);
-          } else {
-            certificateTemplate.generatedCertificates[entryIndex] = {
-              ...certificateTemplate.generatedCertificates[entryIndex],
-              ...payload,
-              sentAt:
-                certificateTemplate.generatedCertificates[entryIndex].sentAt ||
-                null,
-            };
-          }
-
-          results.push({ participantId: participant._id, success: true });
-        } else {
-          results.push({
-            participantId: participant._id,
-            success: false,
-            error: certResult.message,
-          });
-        }
-      } catch (error) {
-        console.error(
-          `[Certificate Scheduler] Error generating certificate for participant ${participant._id}:`,
-          error
-        );
-        results.push({
-          participantId: participant._id,
-          success: false,
-          error: error.message,
-        });
-      }
-    }
-
-    await certificateTemplate.save();
-
-    const successfulCount = results.filter((r) => r.success).length;
-
-    await ActivityLog.create({
-      userId: event.createdBy,
-      action: "Automatic certificate generation (15:50)",
-      details: {
-        eventId: event._id,
-        eventName: event.name,
-        total: results.length,
-        successful: successfulCount,
-      },
-      status: 200,
-    });
-
-    if (ioInstance) {
-      ioInstance.emit("certificatesPrepared", {
-        message: `Certificates prepared for ${event.name}. ${successfulCount} generated.`,
-        eventId: event._id,
-        eventName: event.name,
-        total: results.length,
-        successful: successfulCount,
-      });
-    }
-
-    console.log(
-      `[Certificate Scheduler] (15:50) Completed generation: ${successfulCount}/${results.length} for event: ${event.name}`
-    );
-
-    return { total: results.length, generated: successfulCount };
-  } catch (error) {
-    console.error(
-      `[Certificate Scheduler] Error during generation-only for event ${event._id}:`,
-      error
-    );
-    throw error;
-  }
-};
-
-// Send certificates only for an event (at 16:00 IST)
-exports.sendCertificatesForEvent = async (event) => {
-  try {
-    console.log(
-      `[Certificate Scheduler] (16:00) Sending certificates for event: ${event.name} (ID: ${event._id})`
-    );
-
-    const certificateTemplate = await Certificate.findOne({
-      eventId: event._id,
-    });
-
-    if (
-      !certificateTemplate ||
-      !Array.isArray(certificateTemplate.generatedCertificates)
-    ) {
-      console.log(
-        `[Certificate Scheduler] No generated certificates found for event: ${event.name}`
-      );
-      return { total: 0, sent: 0 };
-    }
-
-    const pendingSends = certificateTemplate.generatedCertificates.filter(
-      (g) => g.generatedAt && !g.sentAt
-    );
-
-    if (pendingSends.length === 0) {
-      console.log(
-        `[Certificate Scheduler] No pending certificates to send for event: ${event.name}`
-      );
-      return { total: 0, sent: 0 };
-    }
-
-    let sentCount = 0;
-
-    for (const gen of pendingSends) {
-      try {
-        const emailResult = await emailService.sendCertificateEmail(
-          gen.participantId,
-          gen.certificatePath,
-          event
-        );
-        if (emailResult.success) {
-          gen.sentAt = new Date();
-          sentCount += 1;
-
-          await Participant.updateOne(
-            { _id: gen.participantId },
-            { certificateSent: true }
-          );
-        }
-      } catch (error) {
-        console.error(
-          `[Certificate Scheduler] Error sending certificate for participant ${gen.participantId}:`,
-          error
-        );
-      }
-    }
-
-    await certificateTemplate.save();
-
-    await ActivityLog.create({
-      userId: event.createdBy,
-      action: "Automatic certificate dispatch (16:00)",
-      details: {
-        eventId: event._id,
-        eventName: event.name,
-        total: pendingSends.length,
-        successful: sentCount,
-      },
-      status: 200,
-    });
-
-    if (ioInstance) {
-      ioInstance.emit("certificatesSent", {
-        message: `Certificates sent for ${event.name}. ${sentCount} dispatched.`,
-        eventId: event._id,
-        eventName: event.name,
-        total: pendingSends.length,
-        successful: sentCount,
-      });
-    }
-
-    console.log(
-      `[Certificate Scheduler] (16:00) Completed sending: ${sentCount}/${pendingSends.length} for event: ${event.name}`
-    );
-
-    return { total: pendingSends.length, sent: sentCount };
-  } catch (error) {
-    console.error(
-      `[Certificate Scheduler] Error during send-only for event ${event._id}:`,
-      error
-    );
-    throw error;
-  }
-};
-
-// Schedule certificate generation for a specific event at 11:59 PM on event day
+// Schedule certificate generation for a specific event at 5:20 PM on event day
 exports.scheduleEventCertificateGeneration = (event) => {
   try {
     const eventDate = new Date(event.date);
     const scheduleDate = new Date(eventDate);
-    scheduleDate.setHours(23, 59, 0, 0); // 11:59 PM
+    scheduleDate.setHours(17, 20, 0, 0); // 5:20 PM
 
     if (scheduleDate < new Date()) {
       console.log(
@@ -519,7 +370,30 @@ exports.scheduleEventCertificateGeneration = (event) => {
         console.log(
           `[Certificate Scheduler] Executing scheduled certificate generation for event: ${event.name}`
         );
-        await exports.generateAndSendCertificatesForEvent(event);
+        await certificateHelper.generateCertificatesForNewParticipants(
+          event._id
+        );
+
+        // Schedule sending at 5:25 PM (5 minutes later)
+        const sendScheduleDate = new Date(eventDate);
+        sendScheduleDate.setHours(17, 25, 0, 0); // 5:25 PM
+        const sendDelay = sendScheduleDate.getTime() - new Date().getTime();
+
+        if (sendDelay > 0) {
+          setTimeout(async () => {
+            try {
+              console.log(
+                `[Certificate Scheduler] Executing scheduled certificate sending for event: ${event.name}`
+              );
+              await certificateHelper.sendGeneratedCertificates(event._id);
+            } catch (error) {
+              console.error(
+                `[Certificate Scheduler] Error in scheduled certificate sending:`,
+                error
+              );
+            }
+          }, sendDelay);
+        }
       } catch (error) {
         console.error(
           `[Certificate Scheduler] Error in scheduled certificate generation:`,
@@ -538,140 +412,106 @@ exports.scheduleEventCertificateGeneration = (event) => {
   }
 };
 
-// Start the daily scheduler
+// Start the daily scheduler (generation at 5:20 PM, sending at 5:25 PM every day)
 exports.startDailyScheduler = () => {
   try {
-    // Job 1: 15:50 IST - Generate certificates for today's events
-    const generateJob = cron.schedule(
-      "50 15 * * *",
+    // Cron expression for generation: 20 17 * * * (5:20 PM every day)
+    const generationJob = cron.schedule(
+      "20 17 * * *",
       async () => {
         const timestamp = new Date().toISOString();
         console.log(
-          `[Certificate Scheduler] ======================= 15:50 GENERATE =======================`
+          `[Certificate Scheduler] ========================================`
         );
-        console.log(`[Certificate Scheduler] Triggered at ${timestamp}`);
         console.log(
-          `[Certificate Scheduler] ===========================================================`
+          `[Certificate Scheduler] Generation job triggered at ${timestamp}`
+        );
+        console.log(
+          `[Certificate Scheduler] ========================================`
         );
 
         try {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const allEvents = await Event.find().populate("participants");
-          const eventsToday = allEvents.filter((event) => {
-            const eventDate = new Date(event.date);
-            const eventDateOnly = new Date(
-              eventDate.getFullYear(),
-              eventDate.getMonth(),
-              eventDate.getDate()
-            );
-            const todayOnly = new Date(
-              today.getFullYear(),
-              today.getMonth(),
-              today.getDate()
-            );
-            return eventDateOnly.getTime() === todayOnly.getTime();
-          });
-
-          for (const event of eventsToday) {
-            await exports.generateCertificatesForEvent(event);
-          }
+          const result = await exports.scheduleCertificateGeneration();
+          console.log(`[Certificate Scheduler] Generation Result:`, result);
         } catch (error) {
           console.error(
-            `[Certificate Scheduler] Error in 15:50 generation job:`,
+            `[Certificate Scheduler] Error in generation job:`,
             error
           );
         }
 
         console.log(
-          `[Certificate Scheduler] ===========================================================`
+          `[Certificate Scheduler] ========================================`
         );
       },
-      { scheduled: true, timezone: "Asia/Kolkata" }
+      {
+        scheduled: true,
+        timezone: "Asia/Kolkata",
+      }
     );
 
-    // Job 2: 16:00 IST - Send certificates for today's events
-    const sendJob = cron.schedule(
-      "0 16 * * *",
+    // Cron expression for sending: 25 17 * * * (5:25 PM every day)
+    const sendingJob = cron.schedule(
+      "25 17 * * *",
       async () => {
         const timestamp = new Date().toISOString();
         console.log(
-          `[Certificate Scheduler] ========================= 16:00 SEND =========================`
+          `[Certificate Scheduler] ========================================`
         );
-        console.log(`[Certificate Scheduler] Triggered at ${timestamp}`);
         console.log(
-          `[Certificate Scheduler] ===========================================================`
+          `[Certificate Scheduler] Sending job triggered at ${timestamp}`
+        );
+        console.log(
+          `[Certificate Scheduler] ========================================`
         );
 
         try {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const allEvents = await Event.find().populate("participants");
-          const eventsToday = allEvents.filter((event) => {
-            const eventDate = new Date(event.date);
-            const eventDateOnly = new Date(
-              eventDate.getFullYear(),
-              eventDate.getMonth(),
-              eventDate.getDate()
-            );
-            const todayOnly = new Date(
-              today.getFullYear(),
-              today.getMonth(),
-              today.getDate()
-            );
-            return eventDateOnly.getTime() === todayOnly.getTime();
-          });
-
-          for (const event of eventsToday) {
-            await exports.sendCertificatesForEvent(event);
-          }
+          const result = await exports.scheduleCertificateSending();
+          console.log(`[Certificate Scheduler] Sending Result:`, result);
         } catch (error) {
-          console.error(
-            `[Certificate Scheduler] Error in 16:00 send job:`,
-            error
-          );
+          console.error(`[Certificate Scheduler] Error in sending job:`, error);
         }
 
         console.log(
-          `[Certificate Scheduler] ===========================================================`
+          `[Certificate Scheduler] ========================================`
         );
       },
-      { scheduled: true, timezone: "Asia/Kolkata" }
+      {
+        scheduled: true,
+        timezone: "Asia/Kolkata",
+      }
     );
 
-    const generateNextRun = new Date();
-    generateNextRun.setHours(15, 50, 0, 0);
-    if (generateNextRun < new Date()) {
-      generateNextRun.setDate(generateNextRun.getDate() + 1);
+    const nextGenRun = new Date();
+    nextGenRun.setHours(17, 20, 0, 0);
+    if (nextGenRun < new Date()) {
+      nextGenRun.setDate(nextGenRun.getDate() + 1);
     }
 
-    const sendNextRun = new Date();
-    sendNextRun.setHours(16, 0, 0, 0);
-    if (sendNextRun < new Date()) {
-      sendNextRun.setDate(sendNextRun.getDate() + 1);
+    const nextSendRun = new Date();
+    nextSendRun.setHours(17, 25, 0, 0);
+    if (nextSendRun < new Date()) {
+      nextSendRun.setDate(nextSendRun.getDate() + 1);
     }
 
     console.log("========================================");
     console.log("Certificate Scheduler Started Successfully");
     console.log(`Timezone: Asia/Kolkata`);
-    console.log(`Schedules:`);
-    console.log(`- Daily generation at 15:50 PM`);
+    console.log(`Generation Schedule: Daily at 5:20 PM`);
+    console.log(`Sending Schedule: Daily at 5:25 PM`);
     console.log(
-      `  Next run: ${generateNextRun.toLocaleString("en-IN", {
-        timeZone: "Asia/Kolkata",
-      })}`
-    );
-    console.log(`- Daily sending at 04:00 PM`);
-    console.log(
-      `  Next run: ${sendNextRun.toLocaleString("en-IN", {
+      `Next generation run: ${nextGenRun.toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
       })}`
     );
     console.log(
-      "======================================================================="
+      `Next sending run: ${nextSendRun.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+      })}`
     );
+    console.log("========================================");
 
-    return { generateJob, sendJob };
+    return { generationJob, sendingJob };
   } catch (error) {
     console.error("Error starting certificate scheduler:", error);
     throw error;

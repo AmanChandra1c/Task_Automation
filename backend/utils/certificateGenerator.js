@@ -340,13 +340,6 @@ exports.generateCertificate = async (
       doc.on("error", reject);
     });
 
-    // Update participant (only for real participants, not preview)
-    if (participant._id && participant._id !== "preview" && participant.save) {
-      participant.certificateSent = true;
-      participant.certificateSentAt = new Date();
-      await participant.save();
-    }
-
     return {
       success: true,
       certificatePath: outputPath,

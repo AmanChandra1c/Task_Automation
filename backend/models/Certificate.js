@@ -45,6 +45,12 @@ const CertificateSchema = new mongoose.Schema({
       certificateUrl: {
         type: String,
       },
+      certificatePath: {
+        type: String,
+      },
+      generatedAt: {
+        type: Date,
+      },
       sentAt: {
         type: Date,
       },
