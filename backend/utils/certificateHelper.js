@@ -39,9 +39,9 @@ exports.generateCertificatesForNewParticipants = async (
     // Check if event date is today
     const isEventToday = eventDateOnly.getTime() === todayOnly.getTime();
 
-    // 🔹 Certificate generation time set to 5:40 PM (17:40)
+    // 🔹 Certificate generation time set to 10:30 PM (22:30)
     const certificateTime = new Date(today);
-    certificateTime.setHours(18, 0, 0, 0); // 5:40 PM
+    certificateTime.setHours(22, 30, 0, 0); // 10:30 PM
 
     const now = new Date();
 
@@ -50,25 +50,25 @@ exports.generateCertificatesForNewParticipants = async (
       console.log(
         `[Certificate Helper] Event ${
           event.name
-        } date is in the future. Certificates will be generated at 5:40 PM on ${eventDate.toDateString()}`
+        } date is in the future. Certificates will be generated at 10:30 PM on ${eventDate.toDateString()}`
       );
       return {
         success: true,
         message:
-          "Event date is in the future. Certificates will be generated automatically at 5:40 PM on event day.",
+          "Event date is in the future. Certificates will be generated automatically at 10:30 PM on event day.",
         scheduled: true,
       };
     }
 
-    // If event is today but it's before 5:40 PM, don't generate yet
+    // If event is today but it's before 10:30 PM, don't generate yet
     if (isEventToday && now < certificateTime) {
       console.log(
-        `[Certificate Helper] Event ${event.name} is today but it's before 5:40 PM. Certificates will be generated at 5:40 PM today.`
+        `[Certificate Helper] Event ${event.name} is today but it's before 10:30 PM. Certificates will be generated at 10:30 PM today.`
       );
       return {
         success: true,
         message:
-          "Event is today but it's before 5:40 PM. Certificates will be generated automatically at 5:40 PM today.",
+          "Event is today but it's before 10:30 PM. Certificates will be generated automatically at 10:30 PM today.",
         scheduled: true,
       };
     }
@@ -121,7 +121,7 @@ exports.generateCertificatesForNewParticipants = async (
     const templateType = certificate.templateType || "sistec";
     const results = [];
 
-    // Generate certificates for each participant (sending will happen separately at 5:45 PM)
+    // Generate certificates for each participant
     for (const participant of participants) {
       try {
         // Generate certificate only
@@ -183,11 +183,12 @@ exports.generateCertificatesForNewParticipants = async (
 
     return {
       success: true,
-      message: `Certificates generated for ${successfulCount} participant(s). Emails will be sent at 5:45 PM.`,
+      message: `Certificates generated for ${successfulCount} participant(s). Emails will be sent at 11:59 PM.`,
       total: results.length,
       successful: successfulCount,
       failed: results.length - successfulCount,
       results: results,
+      scheduled: false,
     };
   } catch (error) {
     console.error(
@@ -202,7 +203,7 @@ exports.generateCertificatesForNewParticipants = async (
 };
 
 /**
- * Send certificates that were already generated (called at 5:45 PM)
+ * Send certificates that were already generated (called at 11:59 PM)
  * @param {String} eventId - Event ID
  */
 exports.sendGeneratedCertificates = async (eventId) => {

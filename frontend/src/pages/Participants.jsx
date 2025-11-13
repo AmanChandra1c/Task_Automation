@@ -317,14 +317,6 @@ const Participants = () => {
                 </Box>
               )}
             </Box>
-
-            <TextField
-              fullWidth
-              label="Event ID (Optional)"
-              value={eventId}
-              onChange={(e) => setEventId(e.target.value)}
-              sx={{ mt: 3 }}
-            />
           </DialogContent>
           <DialogActions
             sx={{ px: 3, pb: 2, flexDirection: isMobile ? "column" : "row" }}
