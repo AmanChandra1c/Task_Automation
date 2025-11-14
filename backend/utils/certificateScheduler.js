@@ -14,7 +14,7 @@ exports.setIoInstance = (io) => {
   ioInstance = io;
 };
 
-// Schedule certificate generation for events (called at 10:30 PM)
+// Schedule certificate generation for events (called at 9:40 AM)
 exports.scheduleCertificateGeneration = async () => {
   try {
     const now = new Date();
@@ -26,16 +26,26 @@ exports.scheduleCertificateGeneration = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Check if it's past 10:30 PM today
+    // Check if it's at or past 9:40 AM today
+    // Since cron runs at exactly 9:40 AM, we should process events for today
+    // Only skip if we're clearly before 9:40 AM (more than 1 minute early)
     const certificateTime = new Date();
-    certificateTime.setHours(22, 30, 0, 0); // 10:30 PM
+    certificateTime.setHours(9, 40, 0, 0); // 9:40 AM
 
-    // Only process if it's past 10:30 PM
-    if (now < certificateTime) {
+    // Allow processing if we're within 2 minutes of the scheduled time or after it
+    // This handles any slight timing differences while preventing premature execution
+    const timeDiff = now.getTime() - certificateTime.getTime();
+    const twoMinutes = 2 * 60 * 1000; // 2 minutes in milliseconds
+
+    if (timeDiff < -twoMinutes) {
       console.log(
-        `[Certificate Scheduler] Current time is before 10:30 PM. Waiting until 10:30 PM.`
+        `[Certificate Scheduler] Current time is more than 2 minutes before 9:40 AM. Skipping.`
       );
-      return { success: true, message: "Waiting until 10:30 PM", count: 0 };
+      return {
+        success: true,
+        message: "Too early, waiting until 9:40 AM",
+        count: 0,
+      };
     }
 
     // Find all events where the date matches today (ignoring time)
@@ -105,7 +115,7 @@ exports.scheduleCertificateGeneration = async () => {
   }
 };
 
-// Send certificates for an event (called at 11:59 PM)
+// Send certificates for an event (called at 9:45 AM)
 exports.scheduleCertificateSending = async () => {
   try {
     const now = new Date();
@@ -117,16 +127,26 @@ exports.scheduleCertificateSending = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Check if it's past 11:59 PM today
+    // Check if it's at or past 9:45 AM today
+    // Since cron runs at exactly 9:45 AM, we should process events for today
+    // Only skip if we're clearly before 9:45 AM (more than 1 minute early)
     const sendTime = new Date();
-    sendTime.setHours(23, 59, 0, 0); // 11:59 PM
+    sendTime.setHours(9, 45, 0, 0); // 9:45 AM
 
-    // Only process if it's past 11:59 PM
-    if (now < sendTime) {
+    // Allow processing if we're within 2 minutes of the scheduled time or after it
+    // This handles any slight timing differences while preventing premature execution
+    const timeDiff = now.getTime() - sendTime.getTime();
+    const twoMinutes = 2 * 60 * 1000; // 2 minutes in milliseconds
+
+    if (timeDiff < -twoMinutes) {
       console.log(
-        `[Certificate Scheduler] Current time is before 11:59 PM. Waiting until 11:59 PM.`
+        `[Certificate Scheduler] Current time is more than 2 minutes before 9:45 AM. Skipping.`
       );
-      return { success: true, message: "Waiting until 11:59 PM", count: 0 };
+      return {
+        success: true,
+        message: "Too early, waiting until 9:45 AM",
+        count: 0,
+      };
     }
 
     // Find all events where the date matches today (ignoring time)
@@ -195,12 +215,12 @@ exports.scheduleCertificateSending = async () => {
   }
 };
 
-// Schedule certificate generation for a specific event at 10:30 PM on event day
+// Schedule certificate generation for a specific event at 9:40 AM on event day
 exports.scheduleEventCertificateGeneration = (event) => {
   try {
     const eventDate = new Date(event.date);
     const scheduleDate = new Date(eventDate);
-    scheduleDate.setHours(22, 30, 0, 0); // 10:30 PM
+    scheduleDate.setHours(9, 40, 0, 0); // 9:40 AM
 
     if (scheduleDate < new Date()) {
       console.log(
@@ -226,9 +246,9 @@ exports.scheduleEventCertificateGeneration = (event) => {
           event._id
         );
 
-        // Schedule sending at 11:59 PM (later)
+        // Schedule sending at 9:45 AM (later)
         const sendScheduleDate = new Date(eventDate);
-        sendScheduleDate.setHours(23, 59, 0, 0); // 11:59 PM
+        sendScheduleDate.setHours(9, 45, 0, 0); // 9:45 AM
         const sendDelay = sendScheduleDate.getTime() - new Date().getTime();
 
         if (sendDelay > 0) {
@@ -264,12 +284,12 @@ exports.scheduleEventCertificateGeneration = (event) => {
   }
 };
 
-// Start the daily scheduler (generation at 10:30 PM, sending at 11:59 PM every day)
+// Start the daily scheduler (generation at 9:40 AM, sending at 9:45 AM every day)
 exports.startDailyScheduler = () => {
   try {
-    // Cron expression for generation: 30 22 * * * (10:30 PM every day)
+    // Cron expression for generation: 40 9 * * * (9:40 AM every day)
     const generationJob = cron.schedule(
-      "30 22 * * *",
+      "40 9 * * *",
       async () => {
         const timestamp = new Date().toISOString();
         console.log(
@@ -302,9 +322,9 @@ exports.startDailyScheduler = () => {
       }
     );
 
-    // Cron expression for sending: 59 23 * * * (11:59 PM every day)
+    // Cron expression for sending: 45 9 * * * (9:45 AM every day)
     const sendingJob = cron.schedule(
-      "59 23 * * *",
+      "45 9 * * *",
       async () => {
         const timestamp = new Date().toISOString();
         console.log(
@@ -335,13 +355,13 @@ exports.startDailyScheduler = () => {
     );
 
     const nextGenRun = new Date();
-    nextGenRun.setHours(22, 30, 0, 0);
+    nextGenRun.setHours(9, 40, 0, 0);
     if (nextGenRun < new Date()) {
       nextGenRun.setDate(nextGenRun.getDate() + 1);
     }
 
     const nextSendRun = new Date();
-    nextSendRun.setHours(23, 59, 0, 0);
+    nextSendRun.setHours(9, 45, 0, 0);
     if (nextSendRun < new Date()) {
       nextSendRun.setDate(nextSendRun.getDate() + 1);
     }
@@ -349,8 +369,8 @@ exports.startDailyScheduler = () => {
     console.log("========================================");
     console.log("Certificate Scheduler Started Successfully");
     console.log(`Timezone: Asia/Kolkata`);
-    console.log(`Generation Schedule: Daily at 10:30 PM`);
-    console.log(`Sending Schedule: Daily at 11:59 PM`);
+    console.log(`Generation Schedule: Daily at 9:40 AM`);
+    console.log(`Sending Schedule: Daily at 9:45 AM`);
     console.log(
       `Next generation run: ${nextGenRun.toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
