@@ -130,7 +130,7 @@ exports.uploadExcel = async (req, res) => {
                   );
                 } else if (result.scheduled) {
                   console.log(
-                    `[Excel Upload] 🕒 Certificates scheduled at 10:30 PM on event day for: ${event.name}`
+                    `[Excel Upload] 🕒 Certificates scheduled at 10:30 AM on event day for: ${event.name}`
                   );
                 }
               }

@@ -36,9 +36,12 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const distPath = path.join(__dirname, "../frontend/dist");
 
 // Serve assets folder (JS, CSS files) - MUST have fallthrough: true
-app.use("/assets", express.static(path.join(distPath, "assets"), {
-  fallthrough: true
-}));
+app.use(
+  "/assets",
+  express.static(path.join(distPath, "assets"), {
+    fallthrough: true,
+  })
+);
 
 // Serve root-level static files (images like logo.png, task-logo.webp)
 app.get("/logo.png", (req, res, next) => {
@@ -114,7 +117,7 @@ app.use((err, req, res, next) => {
 // and serves index.html so React Router can handle client-side routing
 app.get("*", (req, res) => {
   console.log(`[SPA Route] Serving index.html for: ${req.path}`);
-  
+
   // Try multiple possible paths for index.html (for different deployment environments)
   const possiblePaths = [
     path.join(__dirname, "../frontend/dist", "index.html"),
@@ -122,7 +125,7 @@ app.get("*", (req, res) => {
     path.join(process.cwd(), "frontend/dist/index.html"),
     path.join(process.cwd(), "frontend/dist", "index.html"),
   ];
-  
+
   let indexPath = null;
   for (const possiblePath of possiblePaths) {
     if (fs.existsSync(possiblePath)) {
@@ -131,14 +134,21 @@ app.get("*", (req, res) => {
       break;
     }
   }
-  
+
   if (!indexPath) {
-    console.error(`[SPA Route] index.html not found. Tried paths:`, possiblePaths);
+    console.error(
+      `[SPA Route] index.html not found. Tried paths:`,
+      possiblePaths
+    );
     console.error(`[SPA Route] Current __dirname: ${__dirname}`);
     console.error(`[SPA Route] Current process.cwd(): ${process.cwd()}`);
-    return res.status(500).send("Application not built. Please run 'npm run build' in the frontend directory.");
+    return res
+      .status(500)
+      .send(
+        "Application not built. Please run 'npm run build' in the frontend directory."
+      );
   }
-  
+
   // Serve index.html for ALL SPA routes (like /logs, /templates, /participants, etc.)
   // This will be caught by React Router on the client side
   res.sendFile(indexPath, (err) => {
@@ -148,7 +158,9 @@ app.get("*", (req, res) => {
         res.status(500).send("Error loading application");
       }
     } else {
-      console.log(`[SPA Route] Successfully served index.html for: ${req.path}`);
+      console.log(
+        `[SPA Route] Successfully served index.html for: ${req.path}`
+      );
     }
   });
 });
@@ -157,7 +169,9 @@ const PORT = Number(process.env.PORT) || 5000;
 
 // Helpful startup logs
 console.log(
-  `Starting server with config: PORT=${PORT}, FRONTEND_URL=${process.env.FRONTEND_URL || "not set"}`
+  `Starting server with config: PORT=${PORT}, FRONTEND_URL=${
+    process.env.FRONTEND_URL || "not set"
+  }`
 );
 
 server.on("error", (err) => {
@@ -178,7 +192,7 @@ server.listen(PORT, async () => {
   const loadScheduledEmails = require("./utils/loadScheduledEmails");
   await loadScheduledEmails(io);
 
-  // Start certificate scheduler (runs daily at 11:59 PM)
+  // Start certificate scheduler (generation at 10:30 AM, sending at 11:55 AM daily)
   try {
     certificateScheduler.startDailyScheduler();
   } catch (error) {

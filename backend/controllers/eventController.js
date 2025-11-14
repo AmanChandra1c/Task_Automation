@@ -28,7 +28,10 @@ exports.createEvent = async (req, res) => {
 
     // Check for duplicate event name (case-insensitive)
     const existingEvent = await Event.findOne({
-      name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" },
+      name: {
+        $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+        $options: "i",
+      },
     });
 
     if (existingEvent) {
@@ -87,12 +90,12 @@ exports.createEvent = async (req, res) => {
       });
       console.log(`Certificate template auto-created for event: ${event.name}`);
 
-      // Schedule certificate generation at 10:30 PM on event day
+      // Schedule certificate generation at 10:30 AM on event day
       const scheduleResult =
         certificateScheduler.scheduleEventCertificateGeneration(event);
       if (scheduleResult) {
         console.log(
-          `Certificate generation scheduled for event: ${event.name} at 10:30 PM on ${event.date}`
+          `Certificate generation scheduled for event: ${event.name} at 10:30 AM on ${event.date}`
         );
       } else {
         console.log(
@@ -113,10 +116,7 @@ exports.createEvent = async (req, res) => {
     sendEventNotificationToAll(event, notificationParticipantIds)
       .then((notificationResult) => {
         console.log(`Event notification emails: ${notificationResult.message}`);
-        if (
-          notificationResult.errors &&
-          notificationResult.errors.length > 0
-        ) {
+        if (notificationResult.errors && notificationResult.errors.length > 0) {
           console.error(
             "Some emails failed to send:",
             notificationResult.errors
@@ -333,11 +333,11 @@ exports.addParticipantsToEvent = async (req, res) => {
               `[Event Controller] Automatically generated ${result.successful} certificate(s) for new participants in event: ${event.name}`
             );
             console.log(
-              `[Event Controller] Certificates will be sent automatically at 11:59 PM`
+              `[Event Controller] Certificates will be sent automatically at 11:55 AM`
             );
           } else if (result.scheduled) {
             console.log(
-              `[Event Controller] Certificates will be generated automatically at 10:30 PM and sent at 11:59 PM on event day for event: ${event.name}`
+              `[Event Controller] Certificates will be generated automatically at 10:30 AM and sent at 11:55 AM on event day for event: ${event.name}`
             );
           }
         }
@@ -359,7 +359,7 @@ exports.addParticipantsToEvent = async (req, res) => {
     res.status(200).json({
       success: true,
       message:
-        "Participants added to event successfully. Certificates will be generated at 10:30 PM and sent at 11:59 PM automatically if event date has passed.",
+        "Participants added to event successfully. Certificates will be generated at 10:30 AM and sent at 11:55 AM automatically if event date has passed.",
       data: event,
     });
   } catch (error) {

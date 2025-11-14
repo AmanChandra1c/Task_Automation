@@ -22,56 +22,45 @@ exports.generateCertificatesForNewParticipants = async (
 
     // Check if event date is today or has passed (check date only, not time)
     const eventDate = new Date(event.date);
-    const today = new Date();
-
-    // Set both dates to start of day for comparison
-    const eventDateOnly = new Date(
-      eventDate.getFullYear(),
-      eventDate.getMonth(),
-      eventDate.getDate()
-    );
-    const todayOnly = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
-
-    // Check if event date is today
-    const isEventToday = eventDateOnly.getTime() === todayOnly.getTime();
-
-    // 🔹 Certificate generation time set to 9:55 AM (09:55)
-    const certificateTime = new Date(today);
-    certificateTime.setHours(9, 55, 0, 0); // 9:55 AM
-
     const now = new Date();
 
+    // Helper function to get IST date for comparison
+    const getISTDate = (date) => {
+      const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+      const istTime = new Date(date.getTime() + istOffset);
+      return new Date(
+        Date.UTC(
+          istTime.getUTCFullYear(),
+          istTime.getUTCMonth(),
+          istTime.getUTCDate()
+        )
+      );
+    };
+
+    // Get today's date in IST
+    const todayIST = getISTDate(now);
+    const eventDateIST = getISTDate(eventDate);
+
+    // Check if event date is today
+    const isEventToday = eventDateIST.getTime() === todayIST.getTime();
+
     // If event date is in the future, don't generate certificates yet
-    if (eventDateOnly > todayOnly) {
+    if (eventDateIST > todayIST) {
       console.log(
         `[Certificate Helper] Event ${
           event.name
-        } date is in the future. Certificates will be generated at 9:55 AM on ${eventDate.toDateString()}`
+        } date is in the future. Certificates will be generated at 10:30 AM on ${eventDate.toDateString()}`
       );
       return {
         success: true,
         message:
-          "Event date is in the future. Certificates will be generated automatically at 9:55 AM on event day.",
+          "Event date is in the future. Certificates will be generated automatically at 10:30 AM on event day.",
         scheduled: true,
       };
     }
 
-    // If event is today but it's before 9:55 AM, don't generate yet
-    if (isEventToday && now < certificateTime) {
-      console.log(
-        `[Certificate Helper] Event ${event.name} is today but it's before 9:55 AM. Certificates will be generated at 9:55 AM today.`
-      );
-      return {
-        success: true,
-        message:
-          "Event is today but it's before 9:55 AM. Certificates will be generated automatically at 9:55 AM today.",
-        scheduled: true,
-      };
-    }
+    // Since this is called from the scheduler at 10:30 AM IST, we can proceed with generation
+    // The time check is handled by the cron scheduler, so we don't need to check time here
 
     // Event date has passed, generate certificates for participants who haven't received them
     let participants;
@@ -183,7 +172,7 @@ exports.generateCertificatesForNewParticipants = async (
 
     return {
       success: true,
-      message: `Certificates generated for ${successfulCount} participant(s). Emails will be sent at 10:00 AM.`,
+      message: `Certificates generated for ${successfulCount} participant(s). Emails will be sent at 11:55 AM.`,
       total: results.length,
       successful: successfulCount,
       failed: results.length - successfulCount,
@@ -203,7 +192,7 @@ exports.generateCertificatesForNewParticipants = async (
 };
 
 /**
- * Send certificates that were already generated (called at 10:00 AM)
+ * Send certificates that were already generated (called at 11:55 AM)
  * @param {String} eventId - Event ID
  */
 exports.sendGeneratedCertificates = async (eventId) => {

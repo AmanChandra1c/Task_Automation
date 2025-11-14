@@ -14,7 +14,7 @@ exports.setIoInstance = (io) => {
   ioInstance = io;
 };
 
-// Schedule certificate generation for events (called at 9:55 AM)
+// Schedule certificate generation for events (called at 10:30 AM)
 exports.scheduleCertificateGeneration = async () => {
   try {
     const now = new Date();
@@ -22,37 +22,28 @@ exports.scheduleCertificateGeneration = async () => {
       `[Certificate Scheduler] Generation job running at ${now.toISOString()}`
     );
 
-    // Get today's date (start of day)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Check if it's past 9:55 AM today (with 1 minute buffer for timing)
-    const certificateTime = new Date();
-    certificateTime.setHours(9, 54, 0, 0); // 9:54 AM - 1 minute buffer
-
-    // Only process if it's past 9:54 AM (allows for small timing variations)
-    if (now < certificateTime) {
-      console.log(
-        `[Certificate Scheduler] Current time is before 9:54 AM. Waiting until 9:55 AM.`
+    // Helper function to get IST date for comparison
+    const getISTDate = (date) => {
+      const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+      const istTime = new Date(date.getTime() + istOffset);
+      return new Date(
+        Date.UTC(
+          istTime.getUTCFullYear(),
+          istTime.getUTCMonth(),
+          istTime.getUTCDate()
+        )
       );
-      return { success: true, message: "Waiting until 9:55 AM", count: 0 };
-    }
+    };
+
+    // Get today's date in IST
+    const todayIST = getISTDate(now);
 
     // Find all events where the date matches today (ignoring time)
     const allEvents = await Event.find().populate("participants");
     const eventsToday = allEvents.filter((event) => {
       const eventDate = new Date(event.date);
-      const eventDateOnly = new Date(
-        eventDate.getFullYear(),
-        eventDate.getMonth(),
-        eventDate.getDate()
-      );
-      const todayOnly = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate()
-      );
-      return eventDateOnly.getTime() === todayOnly.getTime();
+      const eventDateIST = getISTDate(eventDate);
+      return eventDateIST.getTime() === todayIST.getTime();
     });
 
     if (eventsToday.length === 0) {
@@ -105,7 +96,7 @@ exports.scheduleCertificateGeneration = async () => {
   }
 };
 
-// Send certificates for an event (called at 10:00 AM)
+// Send certificates for an event (called at 11:55 AM)
 exports.scheduleCertificateSending = async () => {
   try {
     const now = new Date();
@@ -113,37 +104,28 @@ exports.scheduleCertificateSending = async () => {
       `[Certificate Scheduler] Sending job running at ${now.toISOString()}`
     );
 
-    // Get today's date (start of day)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Check if it's past 9:59 AM today (with 1 minute buffer for timing)
-    const sendTime = new Date();
-    sendTime.setHours(9, 59, 0, 0); // 9:59 AM - 1 minute buffer
-
-    // Only process if it's past 9:59 AM (allows for small timing variations)
-    if (now < sendTime) {
-      console.log(
-        `[Certificate Scheduler] Current time is before 9:59 AM. Waiting until 10:00 AM.`
+    // Helper function to get IST date for comparison
+    const getISTDate = (date) => {
+      const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+      const istTime = new Date(date.getTime() + istOffset);
+      return new Date(
+        Date.UTC(
+          istTime.getUTCFullYear(),
+          istTime.getUTCMonth(),
+          istTime.getUTCDate()
+        )
       );
-      return { success: true, message: "Waiting until 10:00 AM", count: 0 };
-    }
+    };
+
+    // Get today's date in IST
+    const todayIST = getISTDate(now);
 
     // Find all events where the date matches today (ignoring time)
     const allEvents = await Event.find().populate("participants");
     const eventsToday = allEvents.filter((event) => {
       const eventDate = new Date(event.date);
-      const eventDateOnly = new Date(
-        eventDate.getFullYear(),
-        eventDate.getMonth(),
-        eventDate.getDate()
-      );
-      const todayOnly = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate()
-      );
-      return eventDateOnly.getTime() === todayOnly.getTime();
+      const eventDateIST = getISTDate(eventDate);
+      return eventDateIST.getTime() === todayIST.getTime();
     });
 
     if (eventsToday.length === 0) {
@@ -195,12 +177,12 @@ exports.scheduleCertificateSending = async () => {
   }
 };
 
-// Schedule certificate generation for a specific event at 9:55 AM on event day
+// Schedule certificate generation for a specific event at 10:30 AM on event day
 exports.scheduleEventCertificateGeneration = (event) => {
   try {
     const eventDate = new Date(event.date);
     const scheduleDate = new Date(eventDate);
-    scheduleDate.setHours(9, 55, 0, 0); // 9:55 AM
+    scheduleDate.setHours(10, 30, 0, 0); // 10:30 AM
 
     if (scheduleDate < new Date()) {
       console.log(
@@ -226,9 +208,9 @@ exports.scheduleEventCertificateGeneration = (event) => {
           event._id
         );
 
-        // Schedule sending at 10:00 AM (later)
+        // Schedule sending at 11:55 AM (later)
         const sendScheduleDate = new Date(eventDate);
-        sendScheduleDate.setHours(10, 0, 0, 0); // 10:00 AM
+        sendScheduleDate.setHours(11, 55, 0, 0); // 11:55 AM
         const sendDelay = sendScheduleDate.getTime() - new Date().getTime();
 
         if (sendDelay > 0) {
@@ -264,12 +246,12 @@ exports.scheduleEventCertificateGeneration = (event) => {
   }
 };
 
-// Start the daily scheduler (generation at 9:55 AM, sending at 10:00 AM every day)
+// Start the daily scheduler (generation at 10:30 AM, sending at 11:55 AM every day)
 exports.startDailyScheduler = () => {
   try {
-    // Cron expression for generation: 55 9 * * * (9:55 AM every day)
+    // Cron expression for generation: 30 10 * * * (10:30 AM every day)
     const generationJob = cron.schedule(
-      "55 9 * * *",
+      "30 10 * * *",
       async () => {
         const timestamp = new Date().toISOString();
         console.log(
@@ -302,9 +284,9 @@ exports.startDailyScheduler = () => {
       }
     );
 
-    // Cron expression for sending: 0 10 * * * (10:00 AM every day)
+    // Cron expression for sending: 55 11 * * * (11:55 AM every day)
     const sendingJob = cron.schedule(
-      "0 10 * * *",
+      "55 11 * * *",
       async () => {
         const timestamp = new Date().toISOString();
         console.log(
@@ -335,13 +317,13 @@ exports.startDailyScheduler = () => {
     );
 
     const nextGenRun = new Date();
-    nextGenRun.setHours(9, 55, 0, 0);
+    nextGenRun.setHours(10, 30, 0, 0);
     if (nextGenRun < new Date()) {
       nextGenRun.setDate(nextGenRun.getDate() + 1);
     }
 
     const nextSendRun = new Date();
-    nextSendRun.setHours(10, 0, 0, 0);
+    nextSendRun.setHours(11, 55, 0, 0);
     if (nextSendRun < new Date()) {
       nextSendRun.setDate(nextSendRun.getDate() + 1);
     }
@@ -349,8 +331,8 @@ exports.startDailyScheduler = () => {
     console.log("========================================");
     console.log("Certificate Scheduler Started Successfully");
     console.log(`Timezone: Asia/Kolkata`);
-    console.log(`Generation Schedule: Daily at 9:55 AM`);
-    console.log(`Sending Schedule: Daily at 10:00 AM`);
+    console.log(`Generation Schedule: Daily at 10:30 AM`);
+    console.log(`Sending Schedule: Daily at 11:55 AM`);
     console.log(
       `Next generation run: ${nextGenRun.toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
